@@ -3,8 +3,9 @@ package ds18s20
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/schmidtw/dae/onewire"
 	"time"
+
+	"github.com/schmidtw/go1wire"
 )
 
 const (
@@ -16,11 +17,11 @@ const (
 )
 
 type Ds18s20 struct {
-	address *onewire.Address
-	net     onewire.Adapter
+	address go1wire.Address
+	net     go1wire.Adapter
 }
 
-func New(adapter onewire.Adapter, addr *onewire.Address) (*Ds18s20, error) {
+func New(adapter go1wire.Adapter, addr go1wire.Address) (*Ds18s20, error) {
 	d := &Ds18s20{
 		net:     adapter,
 		address: addr,
@@ -48,14 +49,14 @@ func (d *Ds18s20) readScratchPad() ([]byte, error) {
 	rx := make([]byte, len(tx))
 
 	d.net.Reset()
-	fmt.Printf("tx: %s\n", hex.Dump(tx))
+	fmt.Printf("tx:\n%s\n", hex.Dump(tx))
 	if err := d.net.TxRx(tx, rx); nil != err {
 		return nil, err
 	}
-	fmt.Printf("rx: %s\n", hex.Dump(rx))
+	fmt.Printf("rx:\n%s\n", hex.Dump(rx))
 
 	data := rx[len(rx)-9:]
-	if data[8] != onewire.Crc8(data[:8]) {
+	if data[8] != go1wire.Crc8(data[:8]) {
 		return nil, fmt.Errorf("CRC didn't match")
 	}
 

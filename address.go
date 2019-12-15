@@ -1,37 +1,42 @@
-package onewire
+// Package go1wire provides a small framework for supporting different 1-wire
+// based devices through different types of adapters.
+
+package go1wire
 
 import (
-	"encoding/hex"
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"strings"
 )
 
+// An Address represents the unique 64-bit ROM code of a 1-wire device.
+//
+// Note: This is work in progress as it's unclear which form the device
+//       needs and uses most of the time...
+//
+//	 MSB       LSB MSB                  LSB MSB               LSB
+//	+-------------+------------------------+---------------------+
+//	|  8-bit crc  |  48-bit serial number  |  8-bit family code  |
+//	+-------------+------------------------+---------------------+
 type Address uint64
 
 // Provides the 'family' portion of the address
-func (a *Address) Family() byte {
-	return byte(*a & 0xff)
+func (a Address) Family() byte {
+	return byte(0xff & (a >> 56))
 }
 
 // Provides the canonical string representation of the address
-func (a *Address) String() string {
-	sn := uint64(0x00ffffffffffffff&*a) >> 8
-	crc := byte(0xff & (*a >> 56))
-	return fmt.Sprintf("%x.%012x.%x", crc, sn, a.Family())
+func (a Address) String() string {
+	sn := uint64(0x00ffffffffffff00&a) >> 8
+	crc := uint64(a & 0xff)
+	return fmt.Sprintf("%02x.%012x.%02x", a.Family(), sn, crc)
 }
 
-// Provides an array of bytes that represents the address
-func (a *Address) Bytes() []byte {
-	b := make([]byte, 8)
-	tmp := *a
-	//for i := len(b) - 1; i > -1; i-- {
-	for i := 0; i < len(b); i++ {
-		b[i] = byte(0xff & tmp)
-		tmp >>= 8
-	}
-
-	return b
+// Provides an array of bytes that represents the address.
+func (a Address) Bytes() []byte {
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, uint64(a))
+	return buf
 }
 
 // Creates an Address from the canonical string version.
@@ -40,78 +45,61 @@ func (a *Address) Bytes() []byte {
 //     crc.serial.family
 //
 // If the crc value is "--" then it will be calculated and not verified.
-func ParseAddress(s string) (*Address, error) {
-	parts := strings.Split(s, ".")
-	if 3 != len(parts) {
-		return nil, errors.New("onewire: invalid address " + s)
+func ParseAddress(s string) (Address, error) {
+
+	var family uint8
+	var sn uint64
+	var crcStr string
+	cnt, err := fmt.Sscanf(s, "%x.%x.%s", &family, &sn, &crcStr)
+
+	if (nil != err) || (3 != cnt) || (sn != (0xffffffffffff & sn)) {
+		return 0, errors.New("onewire: invalid address " + s)
 	}
-	family, err := hex.DecodeString(parts[2])
-	if nil != err || 1 != len(family) {
-		return nil, errors.New("onewire: invalid family " + parts[2])
-	}
-	if 1 == 1&len(parts[1]) {
-		parts[1] = "0" + parts[1]
-	}
-	sn, err := hex.DecodeString(parts[1])
-	if nil != err || 6 < len(sn) {
-		fmt.Printf("err: %v\n", err)
-		return nil, errors.New("onewire: invalid serial number " + parts[1])
-	}
-	var crc []byte
-	if "--" != parts[0] {
-		crc, err = hex.DecodeString(parts[0])
-		if nil != err || 1 != len(crc) {
-			return nil, errors.New("onewire: invalid crc " + parts[0])
+	a := sn<<8 | (uint64(family) << 56)
+
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, sn<<8|(uint64(family)<<56))
+
+	crc := RevCrc8(buf[1:])
+
+	if "--" != crcStr {
+		var c uint8
+		cnt, err = fmt.Sscanf(crcStr, "%x", &c)
+		if c != crc {
+			return 0, errors.New("onewire: invalid crc " + s)
 		}
 	}
 
-	return create(family, sn, crc)
+	a |= 0xff & uint64(crc)
+
+	return Address(a), nil
 }
 
 // Creates an Address from the canonical byte version.
 // crc[0], sn[6-0], family[0]
 //
-func AddressFromBytes(b []byte) (*Address, error) {
-	if 8 != len(b) {
-		return nil, errors.New("onewire: invalid buffer length")
+func AddressFromBytes(buf []byte) (Address, error) {
+	if 8 != len(buf) {
+		return Address(0), errors.New("onewire: invalid buffer length")
+	}
+	crc := Crc8(buf[:7])
+	if buf[7] != crc {
+		return 0, errors.New("onewire: invalid crc")
 	}
 
-	return create(b[7:], b[1:7], b[:1])
+	return Address(binary.BigEndian.Uint64(buf)), nil
 }
 
-func AddressFromUint64(a uint64) (*Address, error) {
-	b := make([]byte, 8)
-	for i := len(b) - 1; i > -1; i-- {
-		b[i] = byte(0xff & a)
-		a >>= 8
-	}
+func AddressFromUint64(a uint64) (Address, error) {
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, a)
 
-	return AddressFromBytes(b)
+	return AddressFromBytes(buf)
 }
 
-func create(family, sn, crc []byte) (*Address, error) {
+func AddressFromSearch(a uint64) (Address, error) {
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, a)
 
-	expectedCrc := RevCrc8(append(sn, family...))
-	if nil != crc {
-		//fmt.Printf("crc: %02x =?= expected: %02x\n", crc[0], expectedCrc)
-		if expectedCrc != crc[0] {
-			return nil, errors.New("onewire: crc check failed")
-		}
-	} else {
-		//fmt.Printf("crc: nil =?= expected: %02x\n", expectedCrc)
-		crc = []byte{expectedCrc}
-	}
-
-	var a Address
-
-	for i := 0; i < len(sn); i++ {
-		a <<= 8
-		a |= Address(sn[i])
-	}
-	a <<= 8
-	a |= Address(crc[0]) << 56
-
-	a |= Address(family[0])
-
-	return &a, nil
+	return AddressFromBytes(buf)
 }

@@ -1,4 +1,4 @@
-package onewire
+package go1wire
 
 import (
 	//"encoding/hex"
@@ -29,7 +29,7 @@ type Network struct {
 	mutex   sync.Mutex
 }
 
-func NewOneWireNetwork(a Adapter, d ...*Device) (*Network, error) {
+func NewNetwork(a Adapter, d ...*Device) (*Network, error) {
 	rv := &Network{
 		adapter: a,
 	}
@@ -53,9 +53,9 @@ func (n *Network) Search() ([]Address, error) {
 		last = next
 
 		//fmt.Printf("next: 0x%0x\n", next)
-		a, err := AddressFromUint64(next)
+		a, err := AddressFromSearch(next)
 		if nil == err {
-			list = append(list, *a)
+			list = append(list, a)
 		}
 	}
 

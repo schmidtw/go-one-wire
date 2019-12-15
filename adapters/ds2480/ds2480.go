@@ -1,12 +1,13 @@
 package ds2480
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"time"
 
-	"github.com/schmidtw/go-serial/serial"
+	serial "github.com/schmidtw/go232"
 )
 
 const (
@@ -276,7 +277,9 @@ func (d *Ds2480) Detect() (bool, error) {
 	d.chipBaud = baudMap[9600]
 	d.chipSpeed = speedMap["flexible"]
 
-	if err := d.serial.SetBaud(9600, "8N1"); nil != err {
+	d.serial.Baud = 9600
+	d.serial.Config = "8N1"
+	if err := d.serial.UpdateCfg(); nil != err {
 		return false, err
 	}
 	if err := d.serial.SendBreak(); nil != err {
@@ -427,6 +430,7 @@ func searchToBytes(tree uint64, conflict int) []byte {
 }
 
 func searchFromBytes(data []byte) (out uint64, conflict int) {
+	fmt.Printf("search data:\n%s", hex.Dump(data))
 	conflict = 64
 	for i := uint(0); i < 64; i++ {
 		idx := i * 2
@@ -450,6 +454,10 @@ func searchFromBytes(data []byte) (out uint64, conflict int) {
 
 // Takes the uint64 that describes the tree to explore with the last byte
 // indicating the MSB to explore from
+//
+// Note: The uint64 that is returned is reversed endian to how the addresses
+//       are defined and used everywhere else.
+//
 // Returns the discovered tree and the index of the LSB conflict (or 64 if none)
 func (d *Ds2480) Search(tree uint64, last int) (uint64, int, error) {
 
@@ -470,7 +478,7 @@ func (d *Ds2480) Search(tree uint64, last int) (uint64, int, error) {
 	tx = append(tx, suffix...)
 
 	rx := make([]byte, 17)
-	//fmt.Printf("tx:\n%s", hex.Dump(tx))
+	fmt.Printf("tx:\n%s", hex.Dump(tx))
 	err := d.txrx(MODE_DATA, tx, rx)
 	if err != nil {
 		return 0, 0, err
@@ -481,7 +489,7 @@ func (d *Ds2480) Search(tree uint64, last int) (uint64, int, error) {
 		return 0, 0, ErrInvalidResponse
 	}
 
-	//fmt.Printf("rx:\n%s", hex.Dump(rx))
+	fmt.Printf("rx:\n%s", hex.Dump(rx))
 	rx = rx[1:]
 	out, last := searchFromBytes(rx)
 

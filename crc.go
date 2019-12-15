@@ -1,6 +1,6 @@
 //
 
-package onewire
+package go1wire
 
 // crc8Table values come from Maxim / Dallas Semi AN27.
 var crc8Table = []byte{
