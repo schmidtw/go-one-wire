@@ -1,7 +1,7 @@
 package ds18x20
 
 import (
-	"encoding/hex"
+	//"encoding/hex"
 	"fmt"
 	"time"
 
@@ -25,6 +25,10 @@ type Ds18x20 struct {
 }
 
 func New(adapter go1wire.Adapter, addr go1wire.Address) (*Ds18x20, error) {
+	if FAMILY_DS18S20 != addr.Family() &&
+		FAMILY_DS18B20 != addr.Family() {
+		return nil, fmt.Errorf("Not the right kind of device.")
+	}
 	d := &Ds18x20{
 		net:     adapter,
 		address: addr,
@@ -33,13 +37,20 @@ func New(adapter go1wire.Adapter, addr go1wire.Address) (*Ds18x20, error) {
 	return d, nil
 }
 
-func (d *Ds18x20) ConvertAll() {
-	d.net.Reset()
-	d.net.TxRx([]byte{0xcc, 0x44}, nil)
+func ConvertAll(net go1wire.Adapter) {
+	net.Reset()
+	net.TxRx([]byte{0xcc, 0x44}, nil)
 	time.Sleep(time.Millisecond * 750)
-	//d.net.Reset()
 
 	return
+}
+
+func (d *Ds18x20) String() string {
+	family := "ds18s20"
+	if FAMILY_DS18B20 == d.address.Family() {
+		family = "ds18b20"
+	}
+	return d.address.String() + " - " + family
 }
 
 func (d *Ds18x20) readScratchPad() ([]byte, error) {
@@ -52,11 +63,11 @@ func (d *Ds18x20) readScratchPad() ([]byte, error) {
 	rx := make([]byte, len(tx))
 
 	d.net.Reset()
-	fmt.Printf("tx:\n%s\n", hex.Dump(tx))
+	//fmt.Printf("tx:\n%s\n", hex.Dump(tx))
 	if err := d.net.TxRx(tx, rx); nil != err {
 		return nil, err
 	}
-	fmt.Printf("rx:\n%s\n", hex.Dump(rx))
+	//fmt.Printf("rx:\n%s\n", hex.Dump(rx))
 
 	data := rx[len(rx)-9:]
 	if data[8] != go1wire.Crc8(data[:8]) {

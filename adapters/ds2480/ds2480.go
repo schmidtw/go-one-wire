@@ -1,7 +1,7 @@
 package ds2480
 
 import (
-	"encoding/hex"
+	//"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -430,7 +430,7 @@ func searchToBytes(tree uint64, conflict int) []byte {
 }
 
 func searchFromBytes(data []byte) (out uint64, conflict int) {
-	fmt.Printf("search data:\n%s", hex.Dump(data))
+	//fmt.Printf("search data:\n%s", hex.Dump(data))
 	conflict = 64
 	for i := uint(0); i < 64; i++ {
 		idx := i * 2
@@ -478,7 +478,7 @@ func (d *Ds2480) Search(tree uint64, last int) (uint64, int, error) {
 	tx = append(tx, suffix...)
 
 	rx := make([]byte, 17)
-	fmt.Printf("tx:\n%s", hex.Dump(tx))
+	//fmt.Printf("tx:\n%s", hex.Dump(tx))
 	err := d.txrx(MODE_DATA, tx, rx)
 	if err != nil {
 		return 0, 0, err
@@ -489,7 +489,7 @@ func (d *Ds2480) Search(tree uint64, last int) (uint64, int, error) {
 		return 0, 0, ErrInvalidResponse
 	}
 
-	fmt.Printf("rx:\n%s", hex.Dump(rx))
+	//fmt.Printf("rx:\n%s", hex.Dump(rx))
 	rx = rx[1:]
 	out, last := searchFromBytes(rx)
 
