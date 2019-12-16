@@ -5,7 +5,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/schmidtw/go1wire"
 	"github.com/schmidtw/go1wire/adapters/ds2480"
 	"github.com/schmidtw/go1wire/devices/ds18x20"
 )
@@ -38,8 +37,7 @@ func main() {
 	adapter.Detect()
 
 	tempSensors := []*ds18x20.Ds18x20{}
-	n, _ := go1wire.NewNetwork(adapter, nil)
-	list, err := n.Search()
+	list, err := adapter.Search()
 	if nil != err {
 		fmt.Printf("Err: %s\n", err)
 	} else {

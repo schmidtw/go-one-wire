@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/schmidtw/go1wire"
 	serial "github.com/schmidtw/go232"
 )
 
@@ -355,61 +356,6 @@ func (d *Ds2480) Reset() (version string, result byte, err error) {
 	return version, result, nil
 }
 
-/*
-func (d *Ds2480) ReadBit(b []byte) error {
-	for i := 0; i < len(b); i++ {
-		tmp, err := d.writeBit(1)
-		if nil != err {
-			return err
-		}
-		b[i] = tmp
-	}
-	return nil
-}
-
-func (d *Ds2480) WriteBit(b []byte) error {
-	for i := 0; i < len(b); i++ {
-		_, err := d.writeBit(b[i])
-		if nil != err {
-			return err
-		}
-	}
-	return nil
-}
-
-func (d *Ds2480) Read(b []byte) error {
-	buf := make([]byte, len(b))
-	for i := 0; i < len(buf); i++ {
-		buf[i] = 0xff
-	}
-
-	got, err := d.txrx(CHIP_MODE__DATA, buf, len(buf))
-	if nil != err {
-		return err
-	}
-
-	for i := 0; i < len(got); i++ {
-		b[i] = got[i]
-	}
-
-	return nil
-}
-
-func (d *Ds2480) Write(b []byte) error {
-	got, err := d.txrx(CHIP_MODE__DATA, b, len(b))
-	if nil != err {
-		return err
-	}
-	for i := 0; i < len(got); i++ {
-		if b[i] != got[i] {
-			return ErrInvalidResponse
-		}
-	}
-
-	return nil
-}
-*/
-
 func searchToBytes(tree uint64, conflict int) []byte {
 	data := make([]byte, 16)
 
@@ -452,6 +398,30 @@ func searchFromBytes(data []byte) (out uint64, conflict int) {
 	return out, conflict
 }
 
+func (d *Ds2480) Search() ([]go1wire.Address, error) {
+
+	var last uint64
+	var list []go1wire.Address
+
+	for i := 0; i < 64; {
+		var err error
+		var next uint64
+
+		next, i, err = d.search(last, i)
+		if nil != err {
+			return nil, err
+		}
+		last = next
+
+		a, err := go1wire.AddressFromSearch(next)
+		if nil == err {
+			list = append(list, a)
+		}
+	}
+
+	return list, nil
+}
+
 // Takes the uint64 that describes the tree to explore with the last byte
 // indicating the MSB to explore from
 //
@@ -459,7 +429,7 @@ func searchFromBytes(data []byte) (out uint64, conflict int) {
 //       are defined and used everywhere else.
 //
 // Returns the discovered tree and the index of the LSB conflict (or 64 if none)
-func (d *Ds2480) Search(tree uint64, last int) (uint64, int, error) {
+func (d *Ds2480) search(tree uint64, last int) (uint64, int, error) {
 
 	if _, _, err := d.Reset(); nil != err {
 		return 0, 0, err
@@ -530,21 +500,3 @@ func (d *Ds2480) txrx(mode byte, tx, rx []byte) error {
 
 	return nil
 }
-
-/*
-func (d *Ds2480) writeBit(bit byte) (byte, error) {
-	send := []byte{CMD_WRITE_BIT | ((1 & bit) << 4) | (d.speed << 2)}
-
-	got, err := d.txrx(CHIP_MODE__COMMAND, send, len(send))
-	if nil != err {
-		return 0, err
-	}
-
-	if (0xfc&send[0]) == (0xfc&got[0]) &&
-		((0 == got[0]) || (3 == got[0])) {
-		return 0, ErrInvalidResponse
-	}
-
-	return 1 & got[0], nil
-}
-*/
