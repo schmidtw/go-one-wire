@@ -375,9 +375,8 @@ func searchToBytes(tree uint64, conflict int) []byte {
 	return data
 }
 
-func searchFromBytes(data []byte) (out uint64, conflict int) {
+func searchFromBytes(data []byte) (out uint64, conflict []int) {
 	//fmt.Printf("search data:\n%s", hex.Dump(data))
-	conflict = 64
 	for i := uint(0); i < 64; i++ {
 		idx := i * 2
 		byte_offset := idx / 8
@@ -389,33 +388,50 @@ func searchFromBytes(data []byte) (out uint64, conflict int) {
 		out |= rom_bit << i
 
 		if 0 != conflict_bit && 0 == rom_bit {
-			if i < uint(conflict) {
-				conflict = int(i)
-			}
+			conflict = append(conflict, int(i))
 		}
 	}
 
 	return out, conflict
 }
 
-func (d *Ds2480) Search() ([]go1wire.Address, error) {
-
-	var last uint64
+func (d *Ds2480) thing(addr uint64, conflict int) ([]go1wire.Address, error) {
 	var list []go1wire.Address
 
-	for i := 0; i < 64; {
-		var err error
-		var next uint64
+	this, conflicts, err := d.search(addr, conflict)
+	if nil != err {
+		return nil, err
+	}
 
-		next, i, err = d.search(last, i)
-		if nil != err {
-			return nil, err
-		}
-		last = next
+	a, err := go1wire.AddressFromSearch(this)
 
-		a, err := go1wire.AddressFromSearch(next)
+	if nil == err {
+		list = append(list, a)
+	}
+
+	for i := 0; i < len(conflicts); i++ {
+		got, err := d.thing(this, conflicts[i])
 		if nil == err {
-			list = append(list, a)
+			list = append(list, got...)
+		}
+	}
+	return list, err
+}
+
+func (d *Ds2480) Search() ([]go1wire.Address, error) {
+
+	complete, err := d.thing(0, 0)
+	if nil != err {
+		return nil, err
+	}
+
+	// Dedup the output
+	list := []go1wire.Address{}
+	tmp := make(map[go1wire.Address]int, 0)
+	for _, addr := range complete {
+		if _, val := tmp[addr]; !val {
+			tmp[addr] = 1
+			list = append(list, addr)
 		}
 	}
 
@@ -429,10 +445,10 @@ func (d *Ds2480) Search() ([]go1wire.Address, error) {
 //       are defined and used everywhere else.
 //
 // Returns the discovered tree and the index of the LSB conflict (or 64 if none)
-func (d *Ds2480) search(tree uint64, last int) (uint64, int, error) {
+func (d *Ds2480) search(tree uint64, last int) (uint64, []int, error) {
 
 	if _, _, err := d.Reset(); nil != err {
-		return 0, 0, err
+		return 0, nil, err
 	}
 
 	preamble := []byte{
@@ -451,19 +467,19 @@ func (d *Ds2480) search(tree uint64, last int) (uint64, int, error) {
 	//fmt.Printf("tx:\n%s", hex.Dump(tx))
 	err := d.txrx(MODE_DATA, tx, rx)
 	if err != nil {
-		return 0, 0, err
+		return 0, nil, err
 	}
 
 	if CMD_SEARCH != CMD_SEARCH&rx[0] {
 		d.Detect()
-		return 0, 0, ErrInvalidResponse
+		return 0, nil, ErrInvalidResponse
 	}
 
 	//fmt.Printf("rx:\n%s", hex.Dump(rx))
 	rx = rx[1:]
-	out, last := searchFromBytes(rx)
+	out, conflicts := searchFromBytes(rx)
 
-	return out, last, nil
+	return out, conflicts, nil
 }
 
 func (d *Ds2480) TxRx(tx, rx []byte) error {
